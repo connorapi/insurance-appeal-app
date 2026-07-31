@@ -144,6 +144,13 @@ export default function Home() {
             Something went wrong. Try a different file.
           </p>
         )}
+     <footer
+          className="mt-20 pt-6 text-xs flex gap-4"
+          style={{ borderTop: '1px solid var(--folder-tan)', opacity: 0.6 }}
+        >
+          <a href="/terms" className="underline">Terms of Service</a>
+          <a href="/privacy" className="underline">Privacy Policy</a>
+        </footer>
       </div>
     </main>
   );
