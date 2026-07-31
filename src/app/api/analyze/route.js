@@ -1,3 +1,4 @@
+import { denialPlaybooks } from '../../../denialPlaybooks';
 import Anthropic from '@anthropic-ai/sdk';
 
 const anthropic = new Anthropic({
@@ -61,7 +62,10 @@ appeal rights, requested outcome, and a list of documents to attach.
 Leave placeholders like [insert physician letter reference] where the user
 needs to add specifics. Do not invent medical facts or legal citations.
 
-Denial details: ${JSON.stringify(extracted)}`,
+Denial details: ${JSON.stringify(extracted)}
+
+Relevant appeal strategy information for this type of denial:
+${JSON.stringify(denialPlaybooks[extracted.denial_reason_category] || denialPlaybooks.other)}`,
         },
       ],
     });
