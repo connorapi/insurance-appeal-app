@@ -7,7 +7,8 @@ export async function POST(request) {
     const origin = request.headers.get('origin');
 
     const session = await stripe.checkout.sessions.create({
-      mode: 'payment',
+  mode: 'payment',
+  managed_payments: { enabled: false },
       line_items: [
         {
           price: process.env.STRIPE_PRICE_ID,
