@@ -1,11 +1,25 @@
 'use client';
-import { useState } from 'react';
-
+import { useState, useEffect } from 'react';
 export default function Home() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+const [paid, setPaid] = useState(false);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('paid') === 'true') {
+      setPaid(true);
+    }
+  }, []);
+
+  const handlePayment = async () => {
+    const response = await fetch('/api/checkout', { method: 'POST' });
+    const data = await response.json();
+    if (data.url) {
+      window.location.href = data.url;
+    }
+  };
   const handleFileChange = (e) => {
     setFile(e.target.files[0]);
     setResult(null);
@@ -123,19 +137,41 @@ export default function Home() {
               </span>
             </div>
 
-            <p
-              className="font-mono text-xs uppercase tracking-wide mb-3"
-              style={{ opacity: 0.5 }}
-            >
-              Draft appeal letter
-            </p>
-            <div className="letter-paper rounded p-8">
+            {!paid && (
+              <div
+                className="rounded p-8 text-center"
+                style={{ background: '#fff', border: '1px solid var(--folder-tan)' }}
+              >
+                <p className="text-sm mb-4" style={{ opacity: 0.7 }}>
+                  Your appeal letter is ready. Unlock it to view and edit the full draft.
+                </p>
+                <button
+                  onClick={handlePayment}
+                  className="font-mono text-sm uppercase tracking-wide px-6 py-3 rounded"
+                  style={{ background: 'var(--case-green)', color: '#fff' }}
+                >
+                  Unlock appeal letter — $4.99
+                </button>
+              </div>
+            )}
+
+            {paid && (
+              <>
+                <p
+                  className="font-mono text-xs uppercase tracking-wide mb-3"
+                  style={{ opacity: 0.5 }}
+                >
+                  Draft appeal letter:
+                </p>
+                <div className="letter-paper rounded p-8">
               <textarea
                 className="w-full h-96 text-sm leading-relaxed bg-transparent resize-y focus:outline-none"
                 style={{ color: 'var(--ink)' }}
                 defaultValue={result.letter}
               />
             </div>
+              </>
+            )}
           </div>
         )}
 
