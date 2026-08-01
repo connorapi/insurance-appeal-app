@@ -6,14 +6,19 @@ export default function Home() {
   const [result, setResult] = useState(null);
 const [paid, setPaid] = useState(false);
 
-  useEffect(() => {
+ useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('paid') === 'true') {
       setPaid(true);
+      const saved = sessionStorage.getItem('appealResult');
+      if (saved) {
+        setResult(JSON.parse(saved));
+      }
     }
   }, []);
 
-  const handlePayment = async () => {
+ const handlePayment = async () => {
+    sessionStorage.setItem('appealResult', JSON.stringify(result));
     const response = await fetch('/api/checkout', { method: 'POST' });
     const data = await response.json();
     if (data.url) {
