@@ -8,12 +8,23 @@ const [paid, setPaid] = useState(false);
 
  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('paid') === 'true') {
-      setPaid(true);
-      const saved = sessionStorage.getItem('appealResult');
-      if (saved) {
-        setResult(JSON.parse(saved));
-      }
+    const sessionId = params.get('session_id');
+    if (sessionId) {
+      fetch('/api/verify-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.paid) {
+            setPaid(true);
+            const saved = sessionStorage.getItem('appealResult');
+            if (saved) {
+              setResult(JSON.parse(saved));
+            }
+          }
+        });
     }
   }, []);
 
