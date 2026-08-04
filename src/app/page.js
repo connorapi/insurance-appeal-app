@@ -7,7 +7,26 @@ export default function Home() {
   const [result, setResult] = useState(null);
   const [paid, setPaid] = useState(false);
   const [dragActive, setDragActive] = useState(false);
+  const [letterText, setLetterText] = useState('');
+  const [placeholders, setPlaceholders] = useState([]);
+  const [placeholderValues, setPlaceholderValues] = useState({});
+  const [conditionalClauses, setConditionalClauses] = useState([]);
+  const [clauseDecisions, setClauseDecisions] = useState({});
+  const [warnings, setWarnings] = useState([]);
+  const [showFillForm, setShowFillForm] = useState(false);
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    const matches = [...letterText.matchAll(/\[([^\]]+)\]/g)];
+    const unique = [...new Set(matches.map((m) => m[0]))];
+    setPlaceholders(unique);
+
+    const clauseMatches = [
+      ...letterText.matchAll(/If applicable:?\s+[^.]*\./gi),
+    ];
+    const uniqueClauses = [...new Set(clauseMatches.map((m) => m[0].trim()))];
+    setConditionalClauses(uniqueClauses);
+  }, [letterText]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -24,7 +43,9 @@ export default function Home() {
             setPaid(true);
             const saved = sessionStorage.getItem('appealResult');
             if (saved) {
-              setResult(JSON.parse(saved));
+              const parsed = JSON.parse(saved);
+              setResult(parsed);
+              setLetterText(parsed.letter);
             }
           }
         });
@@ -82,21 +103,107 @@ export default function Home() {
 
       const data = await response.json();
       setResult(data);
+      setLetterText(data.letter || '');
       setLoading(false);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handlePlaceholderChange = (placeholder) => (e) => {
+    setPlaceholderValues({ ...placeholderValues, [placeholder]: e.target.value });
+  };
+
+  const handlePlaceholderFile = (placeholder) => (e) => {
+    const f = e.target.files[0];
+    if (f) {
+      setPlaceholderValues({ ...placeholderValues, [placeholder]: 'FILE:' + f.name });
+    }
+  };
+
+  const isOptional = (placeholder) => /if applicable/i.test(placeholder);
+
+  const isFileType = (placeholder) =>
+    /letter from|documentation|record|report|proof|copy of|evidence|statement from|note from|attach/i.test(
+      placeholder
+    );
+
+  const prettyLabel = (placeholder) => {
+    const inner = placeholder.replace(/^\[|\]$/g, '');
+    const lettersOnly = inner.replace(/[^a-zA-Z]/g, '');
+    if (lettersOnly.length < 2) return 'Additional detail';
+    return inner.charAt(0).toUpperCase() + inner.slice(1).toLowerCase();
+  };
+
+  const getContext = (placeholder) => {
+    const idx = letterText.indexOf(placeholder);
+    if (idx === -1) return '';
+    const start = Math.max(0, idx - 45);
+    const end = Math.min(letterText.length, idx + placeholder.length + 25);
+    let snippet = letterText.slice(start, end);
+    snippet = snippet.replace(placeholder, '_____');
+    return (start > 0 ? '…' : '') + snippet.trim() + (end < letterText.length ? '…' : '');
+  };
+
+  const removedByClause = (placeholder) =>
+    conditionalClauses.some(
+      (clause) =>
+        (clauseDecisions[clause] || 'yes') === 'no' && clause.includes(placeholder)
+    );
+
+  const visiblePlaceholders = placeholders.filter((p) => !removedByClause(p));
+
+  const setClauseDecision = (clause, decision) => {
+    setClauseDecisions({ ...clauseDecisions, [clause]: decision });
+  };
+
+  const applyAll = () => {
+    let updated = letterText;
+    const missing = [];
+
+    conditionalClauses.forEach((clause) => {
+      const decision = clauseDecisions[clause] || 'yes';
+      if (decision === 'no') {
+        updated = updated.split(clause).join('');
+      } else {
+        const stripped = clause.replace(/^If applicable:?\s*/i, '');
+        updated = updated.split(clause).join(stripped);
+      }
+    });
+
+    visiblePlaceholders.forEach((p) => {
+      const value = placeholderValues[p];
+      const optional = isOptional(p);
+      if (value) {
+        const displayValue = value.startsWith('FILE:')
+          ? '(see attached: ' + value.slice(5) + ')'
+          : value;
+        updated = updated.split(p).join(displayValue);
+      } else if (optional) {
+        updated = updated.split(p).join('');
+      } else {
+        missing.push(prettyLabel(p));
+      }
+    });
+
+    setWarnings(missing);
+    setLetterText(updated);
+  };
+
+  const fieldStyle = {
+    width: '100%',
+    padding: '8px 10px',
+    fontSize: '13px',
+    borderRadius: '4px',
+    border: '1px solid var(--folder-tan)',
+    background: '#fff',
+    color: 'var(--ink)',
   };
 
   return (
     <main className="min-h-screen" style={{ background: 'var(--paper)' }}>
       {/* Nav */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 pb-2 flex items-center gap-2">
-        <div
-          className="w-7 h-7 rounded-sm flex items-center justify-center font-mono text-xs font-bold"
-          style={{ background: 'var(--ink)', color: 'var(--paper)' }}
-        >
-          O
-        </div>
+        <img src="/icon.svg" alt="Overturn" className="w-8 h-8" />
         <span
           className="font-mono text-xs tracking-widest uppercase"
           style={{ color: 'var(--ink)', opacity: 0.7 }}
@@ -138,37 +245,19 @@ export default function Home() {
         {/* How it works */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-12 text-left">
           {[
-            {
-              n: '01',
-              title: 'Upload',
-              desc: 'Send your denial letter or EOB — PDF or photo.',
-            },
-            {
-              n: '02',
-              title: 'Review',
-              desc: 'Your case is matched to the right appeal strategy.',
-            },
-            {
-              n: '03',
-              title: 'Draft',
-              desc: 'Get a formal appeal letter, ready to edit and send.',
-            },
+            { n: '01', title: 'Upload', desc: 'Send your denial letter or EOB — PDF or photo.' },
+            { n: '02', title: 'Review', desc: 'Your case is matched to the right appeal strategy.' },
+            { n: '03', title: 'Draft', desc: 'Get a formal appeal letter, ready to edit and send.' },
           ].map((step) => (
             <div
               key={step.n}
               className="step-card rounded-lg p-5"
               style={{ background: '#fff', border: '1px solid var(--folder-tan)' }}
             >
-              <p
-                className="font-mono text-xs mb-2"
-                style={{ color: 'var(--seal-gold)' }}
-              >
+              <p className="font-mono text-xs mb-2" style={{ color: 'var(--seal-gold)' }}>
                 {step.n}
               </p>
-              <p
-                className="font-display text-lg mb-1"
-                style={{ color: 'var(--ink)' }}
-              >
+              <p className="font-display text-lg mb-1" style={{ color: 'var(--ink)' }}>
                 {step.title}
               </p>
               <p className="text-xs" style={{ color: 'var(--ink)', opacity: 0.6 }}>
@@ -192,41 +281,16 @@ export default function Home() {
           }`}
           style={{ borderColor: 'var(--folder-tan)', background: '#fff' }}
         >
-          <svg
-            width="36"
-            height="36"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="mx-auto mb-3"
-            style={{ color: 'var(--seal-gold)' }}
-          >
-            <path
-              d="M12 3v12m0-12l-4 4m4-4l4 4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" className="mx-auto mb-3" style={{ color: 'var(--seal-gold)' }}>
+            <path d="M12 3v12m0-12l-4 4m4-4l4 4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
-          <p
-            className="font-mono text-xs uppercase tracking-wide mb-1"
-            style={{ color: 'var(--ink)' }}
-          >
+          <p className="font-mono text-xs uppercase tracking-wide mb-1" style={{ color: 'var(--ink)' }}>
             {file ? file.name : 'Drop your denial letter here'}
           </p>
-          <p
-            className="text-xs"
-            style={{ color: 'var(--ink)', opacity: 0.5 }}
-          >
+          <p className="text-xs" style={{ color: 'var(--ink)', opacity: 0.5 }}>
             or click to browse — PDF, JPG, or PNG
           </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="application/pdf,image/*"
-            onChange={handleFileChange}
-            className="hidden"
-          />
+          <input ref={fileInputRef} type="file" accept="application/pdf,image/*" onChange={handleFileChange} className="hidden" />
         </div>
 
         <button
@@ -243,10 +307,7 @@ export default function Home() {
             <div className="flex items-center gap-3 mb-8">
               <span className="stamp">Denied</span>
               <span style={{ color: 'var(--ink)', opacity: 0.4 }}>→</span>
-              <span
-                className="stamp stamp-green"
-                style={{ animationDelay: '0.3s' }}
-              >
+              <span className="stamp stamp-green" style={{ animationDelay: '0.3s' }}>
                 Appeal drafted
               </span>
             </div>
@@ -262,16 +323,11 @@ export default function Home() {
               <span style={{ opacity: 0.5 }}>PROCEDURE</span>
               <span>{result.extracted.procedure_or_service || '—'}</span>
               <span style={{ opacity: 0.5 }}>APPEAL DEADLINE</span>
-              <span style={{ color: 'var(--stamp-red)' }}>
-                {result.extracted.appeal_deadline || '—'}
-              </span>
+              <span style={{ color: 'var(--stamp-red)' }}>{result.extracted.appeal_deadline || '—'}</span>
             </div>
 
             {!paid && (
-              <div
-                className="rounded p-8 text-center"
-                style={{ background: '#fff', border: '1px solid var(--folder-tan)' }}
-              >
+              <div className="rounded p-8 text-center" style={{ background: '#fff', border: '1px solid var(--folder-tan)' }}>
                 <p className="text-sm mb-4" style={{ opacity: 0.7 }}>
                   Your appeal letter is ready. Unlock it to view and edit the full draft.
                 </p>
@@ -287,17 +343,133 @@ export default function Home() {
 
             {paid && (
               <>
-                <p
-                  className="font-mono text-xs uppercase tracking-wide mb-3"
-                  style={{ opacity: 0.5 }}
-                >
+                {!showFillForm && (conditionalClauses.length > 0 || placeholders.length > 0) && (
+                  <button
+                    onClick={() => setShowFillForm(true)}
+                    className="font-mono text-xs uppercase tracking-wide px-5 py-3 rounded mb-8 w-full sm:w-auto"
+                    style={{ background: 'var(--seal-gold)', color: '#fff' }}
+                  >
+                    ✎ Fill in my information
+                  </button>
+                )}
+
+                {showFillForm && conditionalClauses.length > 0 && (
+                  <>
+                    <p className="font-mono text-xs uppercase tracking-wide mb-3" style={{ opacity: 0.5 }}>
+                      Optional statements:
+                    </p>
+                    <div className="rounded p-5 sm:p-6 mb-6" style={{ background: '#fff', border: '1px solid var(--folder-tan)' }}>
+                      {conditionalClauses.map((clause) => (
+                        <div key={clause} className="mb-4 last:mb-0">
+                          <p className="text-xs mb-2" style={{ color: 'var(--ink)', opacity: 0.75 }}>
+                            {clause}
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setClauseDecision(clause, 'yes')}
+                              className="font-mono text-xs uppercase px-3 py-1 rounded"
+                              style={{
+                                background: (clauseDecisions[clause] || 'yes') === 'yes' ? 'var(--case-green)' : '#fff',
+                                color: (clauseDecisions[clause] || 'yes') === 'yes' ? '#fff' : 'var(--ink)',
+                                border: '1px solid var(--folder-tan)',
+                              }}
+                            >
+                              Include
+                            </button>
+                            <button
+                              onClick={() => setClauseDecision(clause, 'no')}
+                              className="font-mono text-xs uppercase px-3 py-1 rounded"
+                              style={{
+                                background: clauseDecisions[clause] === 'no' ? 'var(--stamp-red)' : '#fff',
+                                color: clauseDecisions[clause] === 'no' ? '#fff' : 'var(--ink)',
+                                border: '1px solid var(--folder-tan)',
+                              }}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {showFillForm && visiblePlaceholders.length > 0 && (
+                  <>
+                    <p className="font-mono text-xs uppercase tracking-wide mb-3" style={{ opacity: 0.5 }}>
+                      Fill in your details — {visiblePlaceholders.length} remaining:
+                    </p>
+                    <div className="rounded p-5 sm:p-6 mb-4" style={{ background: '#fff', border: '1px solid var(--folder-tan)' }}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {visiblePlaceholders.map((p) => (
+                          <div key={p}>
+                            <label className="font-mono text-xs uppercase block mb-1" style={{ opacity: 0.5 }}>
+                              {prettyLabel(p)}
+                              {!isOptional(p) && <span style={{ color: 'var(--stamp-red)' }}> *</span>}
+                            </label>
+                            <p className="text-xs mb-1 italic" style={{ opacity: 0.5 }}>
+                              {getContext(p)}
+                            </p>
+                            {isFileType(p) ? (
+                              <input
+                                type="file"
+                                onChange={handlePlaceholderFile(p)}
+                                style={{ ...fieldStyle, padding: '6px' }}
+                              />
+                            ) : (
+                              <input
+                                style={fieldStyle}
+                                value={
+                                  placeholderValues[p] && !placeholderValues[p].startsWith('FILE:')
+                                    ? placeholderValues[p]
+                                    : ''
+                                }
+                                onChange={handlePlaceholderChange(p)}
+                                placeholder={prettyLabel(p)}
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {showFillForm && (conditionalClauses.length > 0 || visiblePlaceholders.length > 0) && (
+                  <div className="mb-8">
+                    {warnings.length > 0 && (
+                      <div
+                        className="rounded p-3 mb-3 text-xs"
+                        style={{ background: '#fff', border: '1px solid var(--stamp-red)', color: 'var(--stamp-red)' }}
+                      >
+                        These are required and still blank: {warnings.join(', ')}
+                      </div>
+                    )}
+                    <button
+                      onClick={applyAll}
+                      className="font-mono text-xs uppercase tracking-wide px-5 py-2 rounded"
+                      style={{ background: 'var(--case-green)', color: '#fff' }}
+                    >
+                      Fill in letter
+                    </button>
+                  </div>
+                )}
+
+                {conditionalClauses.length === 0 && placeholders.length === 0 && (
+                  <p className="font-mono text-xs uppercase tracking-wide mb-3" style={{ color: 'var(--case-green)' }}>
+                    ✓ Ready to send
+                  </p>
+                )}
+
+                <p className="font-mono text-xs uppercase tracking-wide mb-3" style={{ opacity: 0.5 }}>
                   Draft appeal letter:
                 </p>
                 <div className="letter-paper rounded p-6 sm:p-8">
                   <textarea
                     className="w-full h-96 text-sm leading-relaxed bg-transparent resize-y focus:outline-none"
                     style={{ color: 'var(--ink)' }}
-                    defaultValue={result.letter}
+                    value={letterText}
+                    onChange={(e) => setLetterText(e.target.value)}
                   />
                 </div>
               </>
